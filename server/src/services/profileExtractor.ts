@@ -120,8 +120,7 @@ function heuristicExtract(rawText: string): CandidateProfile {
   const experienceText = findSection(rawText, ["experience", "work experience", "professional experience"]);
   const experience = parseExperience(experienceText);
   const sections = extractResumeSections(rawText);
-
-  return {
+  const baseProfile = {
     name: lines[0],
     contact: { email, phone, links },
     summary,
@@ -133,10 +132,24 @@ function heuristicExtract(rawText: string): CandidateProfile {
     sections,
     rawText
   };
+
+  return {
+    ...baseProfile,
+    parseAudit: auditProfile(baseProfile)
+  };
 }
 
 function mergeWithFallback(parsed: CandidateProfile, fallback: CandidateProfile): CandidateProfile {
-  return {
+  const projectSectionCount = countSectionItems(fallback.sections, "projects");
+  const projectsAreSuspicious =
+    fallback.projects.length > 0 &&
+    parsed.projects.length > Math.max(fallback.projects.length + 2, projectSectionCount + 2);
+
+  const experienceIsSuspicious =
+    fallback.experience.length > 1 &&
+    parsed.experience.length < fallback.experience.length;
+
+  const merged = {
     ...parsed,
     contact: {
       ...fallback.contact,
@@ -144,13 +157,59 @@ function mergeWithFallback(parsed: CandidateProfile, fallback: CandidateProfile)
       links: unique([...(parsed.contact.links ?? []), ...(fallback.contact.links ?? [])])
     },
     summary: parsed.summary || fallback.summary,
-    experience: parsed.experience.length >= fallback.experience.length ? parsed.experience : fallback.experience,
+    experience: experienceIsSuspicious ? fallback.experience : parsed.experience.length >= fallback.experience.length ? parsed.experience : fallback.experience,
     skills: parsed.skills.length ? unique(parsed.skills) : fallback.skills,
     education: parsed.education.length ? parsed.education : fallback.education,
     certifications: parsed.certifications.length ? parsed.certifications : fallback.certifications,
-    projects: parsed.projects.length ? parsed.projects : fallback.projects,
+    projects: projectsAreSuspicious ? fallback.projects : parsed.projects.length ? parsed.projects.map((line) => line.replace(/^[-•]\s*/, "").trim()).filter(Boolean) : fallback.projects,
     sections: fallback.sections.length ? fallback.sections : parsed.sections,
     rawText: parsed.rawText || fallback.rawText
+  };
+  return {
+    ...merged,
+    parseAudit: auditProfile(merged)
+  };
+}
+
+function countSectionItems(sections: CandidateProfile["sections"], kind: string): number {
+  return sections
+    .filter((section) => section.kind === kind)
+    .reduce((total, section) => total + section.lines.filter((line) => line.trim().length > 0).length, 0);
+}
+
+function auditProfile(profile: Omit<CandidateProfile, "id" | "parseAudit">): CandidateProfile["parseAudit"] {
+  const sectionCounts = profile.sections.reduce<Record<string, number>>((counts, section) => {
+    counts[section.kind] = (counts[section.kind] ?? 0) + section.lines.filter((line) => line.trim().length > 0).length;
+    return counts;
+  }, {});
+  const extractedCounts = {
+    roles: profile.experience.length,
+    skills: profile.skills.length,
+    projects: profile.projects.length,
+    education: profile.education.length,
+    certifications: profile.certifications.length
+  };
+  const warnings: string[] = [];
+  const projectSectionCount = sectionCounts.projects ?? 0;
+  const experienceSectionCount = sectionCounts.experience ?? 0;
+
+  if (projectSectionCount > 0 && extractedCounts.projects > projectSectionCount + 2) {
+    warnings.push(`Project count looks high: extracted ${extractedCounts.projects}, project section has about ${projectSectionCount} lines.`);
+  }
+  if (projectSectionCount > 0 && extractedCounts.projects === 0) {
+    warnings.push("Project section was detected, but no projects were extracted.");
+  }
+  if (experienceSectionCount > 4 && extractedCounts.roles <= 1) {
+    warnings.push("Experience section is substantial, but only one role was detected.");
+  }
+  if (!profile.name) warnings.push("Candidate name was not detected.");
+  if (!profile.contact.email) warnings.push("Email was not detected.");
+
+  return {
+    status: warnings.length >= 2 ? "Needs attention" : warnings.length === 1 ? "Review" : "Pass",
+    warnings,
+    sectionCounts,
+    extractedCounts
   };
 }
 

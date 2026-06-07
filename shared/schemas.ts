@@ -20,6 +20,19 @@ export const resumeSectionSchema = z.object({
   lines: z.array(z.string()).default([])
 });
 
+export const parseAuditSchema = z.object({
+  status: z.enum(["Pass", "Review", "Needs attention"]).default("Review"),
+  warnings: z.array(z.string()).default([]),
+  sectionCounts: z.record(z.number()).default({}),
+  extractedCounts: z.object({
+    roles: z.number().default(0),
+    skills: z.number().default(0),
+    projects: z.number().default(0),
+    education: z.number().default(0),
+    certifications: z.number().default(0)
+  }).default({ roles: 0, skills: 0, projects: 0, education: 0, certifications: 0 })
+});
+
 export const candidateProfileSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
@@ -31,6 +44,12 @@ export const candidateProfileSchema = z.object({
   certifications: z.array(z.string()).default([]),
   projects: z.array(z.string()).default([]),
   sections: z.array(resumeSectionSchema).default([]),
+  parseAudit: parseAuditSchema.default({
+    status: "Review",
+    warnings: [],
+    sectionCounts: {},
+    extractedCounts: { roles: 0, skills: 0, projects: 0, education: 0, certifications: 0 }
+  }),
   rawText: z.string()
 });
 

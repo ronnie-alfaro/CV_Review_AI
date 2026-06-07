@@ -18,6 +18,7 @@ model CandidateProfile {
   certsJson      String
   projectsJson   String
   sectionsJson   String   @default("[]")
+  parseAuditJson String   @default("{}")
   rawText        String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

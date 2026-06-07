@@ -13,6 +13,7 @@ export async function saveCandidate(profile: CandidateProfile): Promise<Candidat
       certsJson: JSON.stringify(profile.certifications),
       projectsJson: JSON.stringify(profile.projects),
       sectionsJson: JSON.stringify(profile.sections),
+      parseAuditJson: JSON.stringify(profile.parseAudit),
       rawText: profile.rawText
     }
   });

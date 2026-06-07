@@ -1,4 +1,4 @@
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, CircleCheck, FileSearch, ShieldCheck } from "lucide-react";
 import { Button } from "../components/Button";
 import { useAlignmentStore } from "../../store/useAlignmentStore";
 
@@ -13,23 +13,32 @@ export function Landing() {
             Local-first analysis. No fabricated experience.
           </div>
           <h1 className="max-w-4xl text-5xl font-semibold leading-tight tracking-normal text-foreground md:text-6xl">
-            Understand how your experience aligns with the jobs you want.
+            Compare your CV against a role before you apply.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-            Compare your resume with a target role, see clear evidence behind every score, and produce a stronger truthful version of your CV.
+            See what matches, what is missing, and whether you should apply, improve your CV, or target a better-fit role.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button className="h-12 px-5 text-base" onClick={() => setStep("resume")}>
-              Upload Resume
+              Upload CV
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
-        <div className="grid gap-3 rounded-lg border border-border bg-white p-5 shadow-panel">
-          {["ATS readability", "Role alignment", "Skills coverage", "Leadership signals", "Technical signals", "Communication signals"].map((label, index) => (
-            <div key={label} className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-border py-3 last:border-b-0">
-              <span className="text-sm font-medium">{label}</span>
-              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{index + 1}</span>
+        <div className="grid gap-4 rounded-lg border border-border bg-white p-5 shadow-panel">
+          <div className="flex items-center gap-2">
+            <FileSearch className="h-5 w-5 text-teal-700" />
+            <div className="text-sm font-semibold">Analysis preview</div>
+          </div>
+          <div className="rounded-md border-2 border-amber-500 p-4">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">Verdict</div>
+            <div className="mt-2 text-xl font-semibold">Optimize before applying</div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">Strong platform overlap, but Kubernetes and ownership evidence need clarification.</p>
+          </div>
+          {["AWS: strong evidence found", "Kubernetes: transferable evidence only", "Leadership scope: needs more detail"].map((label) => (
+            <div key={label} className="flex items-start gap-3 rounded-md bg-muted/40 px-3 py-3">
+              <CircleCheck className="mt-0.5 h-4 w-4 text-teal-700" />
+              <span className="text-sm text-muted-foreground">{label}</span>
             </div>
           ))}
         </div>

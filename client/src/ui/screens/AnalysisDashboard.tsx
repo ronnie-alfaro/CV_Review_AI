@@ -1,6 +1,8 @@
-import { CircleAlert, CircleCheck, MapPin, RotateCcw } from "lucide-react";
+import { useState } from "react";
+import { CircleAlert, CircleCheck, Filter, MapPin, RotateCcw } from "lucide-react";
 import { Button } from "../components/Button";
 import { Panel } from "../components/Panel";
+import { LlmStatusBadge } from "../components/LlmStatusBadge";
 import { useAlignmentStore } from "../../store/useAlignmentStore";
 import type { RequirementEvidence, Score } from "../../../../shared/schemas";
 
@@ -24,38 +26,14 @@ export function AnalysisDashboard() {
             Scores are separated so you can see where the resume is strong, where evidence is missing, and what can be improved without inventing experience.
           </p>
         </div>
-        <Button variant="secondary" onClick={() => setStep("resume")}>
-          <RotateCcw className="h-4 w-4" />
-          Start Over
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <LlmStatusBadge />
+          <Button variant="secondary" onClick={() => setStep("resume")}>
+            <RotateCcw className="h-4 w-4" />
+            Start Over
+          </Button>
+        </div>
       </div>
-
-      <div className="grid gap-4">
-        {analysis.scores.map((score) => (
-          <ScoreRow key={score.label} score={score} />
-        ))}
-      </div>
-
-      {analysis.requirements.length > 0 && <RequirementEvidenceMatrix requirements={analysis.requirements} />}
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <InsightPanel title="Top fixes before applying" items={analysis.topFixes.length ? analysis.topFixes : analysis.suggestions} tone="action" />
-        <InsightPanel title="Recruiter lens" items={analysis.recruiterLens} tone="neutral" />
-        <InsightPanel title="Hiring manager concerns" items={analysis.hiringManagerConcerns} tone="warn" />
-        <InsightPanel title="Interview defense" items={analysis.interviewDefense} tone="neutral" />
-      </div>
-
-      {analysis.doNotFabricate.length > 0 && (
-        <Panel className="border-red-200 bg-red-50/60 shadow-none">
-          <h3 className="text-xl font-semibold text-red-950">Do not fabricate</h3>
-          <p className="mt-2 text-sm leading-6 text-red-900">These items should only be added if they are true and defensible in an interview.</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {analysis.doNotFabricate.map((item) => (
-              <span key={item} className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-900">{item}</span>
-            ))}
-          </div>
-        </Panel>
-      )}
 
       <Panel className="border-2" style={{ borderColor: verdict.color }}>
         <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
@@ -79,6 +57,34 @@ export function AnalysisDashboard() {
           </div>
         </div>
       </Panel>
+
+      <InsightPanel title="Top fixes before applying" items={analysis.topFixes.length ? analysis.topFixes : analysis.suggestions} tone="action" />
+
+      {analysis.requirements.length > 0 && <RequirementEvidenceMatrix requirements={analysis.requirements} />}
+
+      <div className="grid gap-4">
+        {analysis.scores.map((score) => (
+          <ScoreRow key={score.label} score={score} />
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <InsightPanel title="Recruiter lens" items={analysis.recruiterLens} tone="neutral" />
+        <InsightPanel title="Hiring manager concerns" items={analysis.hiringManagerConcerns} tone="warn" />
+        <InsightPanel title="Interview defense" items={analysis.interviewDefense} tone="neutral" />
+      </div>
+
+      {analysis.doNotFabricate.length > 0 && (
+        <Panel className="border-red-200 bg-red-50/60 shadow-none">
+          <h3 className="text-xl font-semibold text-red-950">Do not fabricate</h3>
+          <p className="mt-2 text-sm leading-6 text-red-900">These items should only be added if they are true and defensible in an interview.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {analysis.doNotFabricate.map((item) => (
+              <span key={item} className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-900">{item}</span>
+            ))}
+          </div>
+        </Panel>
+      )}
     </section>
   );
 }
@@ -131,15 +137,39 @@ function List({ title, items, icon }: { title: string; items: string[]; icon?: "
 }
 
 function RequirementEvidenceMatrix({ requirements }: { requirements: RequirementEvidence[] }) {
+  const [filter, setFilter] = useState<"All" | "Critical" | "Missing" | "Transferable">("All");
+  const visibleRequirements = requirements.filter((item) => {
+    if (filter === "Critical") return item.importance === "Critical";
+    if (filter === "Missing") return item.status === "Missing";
+    if (filter === "Transferable") return item.status === "Transferable";
+    return true;
+  });
+
   return (
     <Panel>
-      <div className="flex items-center gap-2">
-        <MapPin className="h-5 w-5 text-teal-700" />
-        <h3 className="text-xl font-semibold">Requirement evidence matrix</h3>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-teal-700" />
+            <h3 className="text-xl font-semibold">Requirement evidence matrix</h3>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            This is the core comparison: what the role asks for, how important it is, what the CV proves, and what to do next.
+          </p>
+        </div>
+        <div className="no-print flex flex-wrap items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          {(["All", "Critical", "Missing", "Transferable"] as const).map((item) => (
+            <button
+              key={item}
+              className={`rounded-md border px-3 py-2 text-sm font-medium ${filter === item ? "border-primary bg-primary text-primary-foreground" : "border-border bg-white text-muted-foreground"}`}
+              onClick={() => setFilter(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
       </div>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        This is the core comparison: what the role asks for, how important it is, what the CV proves, and what to do next.
-      </p>
       <div className="mt-5 overflow-hidden rounded-md border border-border">
         <div className="hidden grid-cols-[1.1fr_120px_120px_1.4fr_1.2fr] gap-0 bg-muted px-4 py-3 text-xs font-semibold uppercase text-muted-foreground lg:grid">
           <div>Requirement</div>
@@ -149,7 +179,7 @@ function RequirementEvidenceMatrix({ requirements }: { requirements: Requirement
           <div>Action</div>
         </div>
         <div className="divide-y divide-border">
-          {requirements.map((item) => (
+          {visibleRequirements.map((item) => (
             <div key={`${item.category}-${item.requirement}`} className="grid gap-3 bg-white px-4 py-4 text-sm lg:grid-cols-[1.1fr_120px_120px_1.4fr_1.2fr]">
               <div>
                 <div className="font-semibold">{item.requirement}</div>
