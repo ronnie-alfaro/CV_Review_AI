@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model CandidateProfile {
+  id             String   @id @default(cuid())
+  name           String?
+  contactJson    String
+  summary        String?
+  experienceJson String
+  skillsJson     String
+  educationJson  String
+  certsJson      String
+  projectsJson   String
+  sectionsJson   String   @default("[]")
+  rawText        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  analyses       Analysis[]
+}
+
+model JobDescription {
+  id                 String   @id @default(cuid())
+  title              String?
+  company            String?
+  requiredSkillsJson String
+  preferredJson      String
+  responsibilitiesJson String
+  leadershipJson     String
+  technicalJson      String
+  softSkillsJson     String
+  seniority          String?
+  rawText            String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  analyses           Analysis[]
+}
+
+model Analysis {
+  id                 String   @id @default(cuid())
+  candidateProfileId String
+  jobDescriptionId   String
+  scoresJson         String
+  suggestionsJson    String
+  optimizedJson      String
+  createdAt          DateTime @default(now())
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id])
+  jobDescription     JobDescription   @relation(fields: [jobDescriptionId], references: [id])
+}
+
+model EmbeddingRecord {
+  id          String   @id @default(cuid())
+  ownerType   String
+  ownerId     String
+  label       String
+  text        String
+  vectorJson  String
+  createdAt   DateTime @default(now())
+}
