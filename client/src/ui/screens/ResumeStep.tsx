@@ -1,5 +1,5 @@
-import { ChangeEvent } from "react";
-import { ArrowRight, CircleAlert, CircleCheck, Plus, Trash2, Upload } from "lucide-react";
+import { ChangeEvent, ReactNode } from "react";
+import { ArrowRight, CircleAlert, CircleCheck, Compass, Eye, Plus, ShieldCheck, Sparkles, Target, Trash2, TrendingUp, Upload } from "lucide-react";
 import { Button } from "../components/Button";
 import { Panel } from "../components/Panel";
 import { Field } from "../components/Field";
@@ -66,6 +66,7 @@ export function ResumeStep() {
               </div>
             )}
             <ParseAuditPanel candidate={candidate} />
+            <CandidateCard candidate={candidate} />
             <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-4 md:grid-cols-4">
               <Metric label="Roles" value={candidate.experience.length} />
               <Metric label="Skills" value={candidate.skills.length} />
@@ -92,6 +93,117 @@ export function ResumeStep() {
 }
 
 type ExperienceItem = CandidateProfile["experience"][number];
+
+function CandidateCard({ candidate }: { candidate: CandidateProfile }) {
+  const card = candidate.candidateCard;
+  const swot = card.swot;
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-white shadow-panel">
+      <div className="bg-primary px-5 py-5 text-primary-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium opacity-90">
+          <Sparkles className="h-4 w-4" />
+          Candidate card
+        </div>
+        <h3 className="mt-3 text-2xl font-semibold">{card.headline}</h3>
+        <p className="mt-2 text-sm opacity-85">{card.archetype}</p>
+      </div>
+      <div className="grid gap-5 p-5">
+        <div className="grid gap-3">
+          <NarrativeRow icon={<Target className="h-4 w-4" />} title="What this CV is selling" text={card.marketPositioning} />
+          <NarrativeRow icon={<Compass className="h-4 w-4" />} title="Market narrative" text={card.sellingNarrative} />
+          <NarrativeRow icon={<Eye className="h-4 w-4" />} title="Likely reader takeaway" text={card.readerTakeaway} />
+        </div>
+
+        <div>
+          <div className="text-sm font-semibold">FODA / SWOT</div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <SwotBlock title="Strengths" tone="green" items={swot.strengths} />
+            <SwotBlock title="Weaknesses" tone="amber" items={swot.weaknesses} />
+            <SwotBlock title="Opportunities" tone="blue" items={swot.opportunities} />
+            <SwotBlock title="Threats" tone="red" items={swot.threats} />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-muted/30 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            Trajectory
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.trajectory}</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <IdentityList title="Technical identity" items={card.technicalIdentity} />
+          <IdentityList title="Leadership identity" items={card.leadershipIdentity} />
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            Strongest signals
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {card.strongestSignals.map((signal) => (
+              <div key={signal.label} className="rounded-md border border-border bg-muted/30 p-3">
+                <div className="text-sm font-semibold">{signal.label}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{signal.value}</div>
+                {signal.evidence.length > 0 && (
+                  <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {signal.evidence.slice(0, 3).join(" · ")}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NarrativeRow({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <span className="text-primary">{icon}</span>
+        {title}
+      </div>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
+    </div>
+  );
+}
+
+function SwotBlock({ title, tone, items }: { title: string; tone: "green" | "amber" | "blue" | "red"; items: string[] }) {
+  const tones = {
+    green: "border-teal-200 bg-teal-50 text-teal-950",
+    amber: "border-amber-200 bg-amber-50 text-amber-950",
+    blue: "border-sky-200 bg-sky-50 text-sky-950",
+    red: "border-red-200 bg-red-50 text-red-950"
+  };
+  return (
+    <div className={`rounded-md border p-4 ${tones[tone]}`}>
+      <div className="text-sm font-semibold">{title}</div>
+      <ul className="mt-2 grid gap-2 text-sm leading-6">
+        {(items.length ? items : ["No clear signal detected."]).slice(0, 5).map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function IdentityList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {(items.length ? items : ["Needs more evidence"]).slice(0, 10).map((item) => (
+          <span key={item} className="rounded-md border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">{item}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function ParseAuditPanel({ candidate }: { candidate: CandidateProfile }) {
   const audit = candidate.parseAudit;

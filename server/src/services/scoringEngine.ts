@@ -2,6 +2,7 @@ import type { Analysis, CandidateProfile, JobDescription, RequirementEvidence, S
 import { analysisSchema } from "../../../shared/schemas.js";
 import { llmClient } from "./llmClient.js";
 import { unique } from "./text.js";
+import { buildStructuredPrompt } from "./promptBuilder.js";
 
 function includesAny(text: string, terms: string[]): number {
   const lower = text.toLowerCase();
@@ -24,22 +25,6 @@ function score(
   return { label, value: clamp(value), why, strengths, weaknesses, missingEvidence, opportunities };
 }
 
-function cleanBullet(bullet: string): string {
-  return bullet.replace(/^[-•]\s*/, "").trim();
-}
-
-function relevanceRank(bullet: string, terms: string[]): number {
-  const lower = bullet.toLowerCase();
-  return terms.reduce((total, term) => total + (lower.includes(term.toLowerCase()) ? 1 : 0), 0);
-}
-
-function reorderByRelevance(bullets: string[], terms: string[]): string[] {
-  return [...bullets]
-    .map((bullet, index) => ({ bullet, index, rank: relevanceRank(bullet, terms) }))
-    .sort((a, b) => b.rank - a.rank || a.index - b.index)
-    .map((item) => cleanBullet(item.bullet));
-}
-
 function evidenceForRequirement(candidate: CandidateProfile, requirement: string): string[] {
   const needle = requirement.toLowerCase();
   const tokens = needle.split(/\W+/).filter((token) => token.length > 3);
@@ -53,12 +38,23 @@ function evidenceForRequirement(candidate: CandidateProfile, requirement: string
     if (skill.toLowerCase().includes(needle) || needle.includes(skill.toLowerCase())) evidence.push(`Skills include ${skill}.`);
   }
   for (const item of candidate.experience) {
+    if (matchesRequirement(`${item.title} ${item.company}`)) evidence.push(`Role history includes ${item.title} at ${item.company}.`);
     const matched = item.bullets.find((bullet) => matchesRequirement(bullet));
     if (matched) evidence.push(`${item.title} at ${item.company}: ${matched}`);
   }
   const project = candidate.projects.find((item) => matchesRequirement(item));
   if (project) evidence.push(`Project: ${project}`);
   return unique(evidence).slice(0, 3);
+}
+
+function uniqueFixes(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const normalized = value.replace(/^.+?:\s*/, "").toLowerCase();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
 }
 
 function transferableEvidence(candidate: CandidateProfile, requirement: string, category: RequirementEvidence["category"]): string[] {
@@ -188,12 +184,13 @@ export function heuristicAnalysis(candidate: CandidateProfile, job: JobDescripti
     )
   ];
 
-  const suggestions = unique([
+  let suggestions = unique([
     ...missingSkills.slice(0, 6).map((skill) => `If accurate, add where you used ${skill} and what outcome it supported.`),
     "Keep all claims grounded in resume evidence and remove anything that cannot be defended in an interview.",
     "Move the most job-relevant achievements into the top third of the resume."
   ]);
 
+  const seenRequirements = new Set<string>();
   const requirements = unique([
     ...job.requiredSkills.map((item) => `Skill::Critical::${item}`),
     ...job.technicalRequirements.map((item) => `Technical::Important::${item}`),
@@ -201,18 +198,29 @@ export function heuristicAnalysis(candidate: CandidateProfile, job: JobDescripti
     ...job.responsibilities.map((item) => `Responsibility::Important::${item}`),
     ...job.preferredSkills.map((item) => `Skill::Nice to have::${item}`),
     ...job.softSkills.map((item) => `Soft Skill::Nice to have::${item}`)
-  ]).map((entry) => {
+  ]).filter((entry) => {
+    const requirement = entry.split("::")[2]?.toLowerCase().trim();
+    if (!requirement || seenRequirements.has(requirement)) return false;
+    seenRequirements.add(requirement);
+    return true;
+  }).map((entry) => {
     const [category, importance, requirement] = entry.split("::") as [RequirementEvidence["category"], RequirementEvidence["importance"], string];
     return makeRequirement(candidate, requirement, category, importance);
   }).slice(0, 18);
 
   const criticalGaps = requirements.filter((item) => item.importance === "Critical" && ["Missing", "Transferable"].includes(item.status));
   const weakImportant = requirements.filter((item) => item.importance !== "Nice to have" && item.status === "Weak");
-  const topFixes = unique([
+  const actionableRequirements = requirements.filter((item) => ["Missing", "Transferable", "Weak"].includes(item.status));
+  suggestions = unique([
+    ...actionableRequirements.slice(0, 6).map((item) => item.recommendedAction),
+    "Keep all claims grounded in resume evidence and remove anything that cannot be defended in an interview.",
+    "Move the most job-relevant achievements into the top third of the resume."
+  ]);
+  const topFixes = uniqueFixes(unique([
     ...criticalGaps.slice(0, 3).map((item) => `${item.requirement}: ${item.recommendedAction}`),
     ...weakImportant.slice(0, 3).map((item) => `${item.requirement}: ${item.recommendedAction}`),
     ...suggestions.slice(0, 2)
-  ]).slice(0, 5);
+  ])).slice(0, 5);
 
   const recruiterLens = unique([
     matchedSkills.length ? `Recruiter will likely see visible overlap in ${matchedSkills.slice(0, 5).join(", ")}.` : "Recruiter may not see enough immediate keyword overlap.",
@@ -236,50 +244,98 @@ export function heuristicAnalysis(candidate: CandidateProfile, job: JobDescripti
     ...requirements.filter((item) => item.status === "Missing").map((item) => item.requirement).slice(0, 5),
     "Certifications, metrics, tools, or responsibilities that are not supported by the CV."
   ]).slice(0, 8);
+  const alternativeRoles = suggestAlternativeRoles(candidate, matchedSkills);
 
-  const baseBullets = candidate.experience.flatMap((item) => item.bullets).map(cleanBullet).filter(Boolean).slice(0, 12);
-  const relevantTerms = unique([...matchedSkills, ...job.responsibilities, ...job.technicalRequirements, ...job.leadershipRequirements]);
-  const emphasizedSkills = unique([...matchedSkills, ...candidate.skills]).slice(0, 14);
-  const originalSummary = candidate.summary || "Experienced professional with relevant background for the target role.";
-  const roleContext = matchedSkills.length ? ` Role-relevant strengths already present: ${matchedSkills.slice(0, 5).join(", ")}.` : "";
-  const optimized = [
-    {
-      mode: "Conservative" as const,
-      headline: candidate.name ? `${candidate.name} - CV optimization` : "CV optimization",
-      summary: originalSummary,
-      experienceBullets: baseBullets,
-      skillsToEmphasize: emphasizedSkills,
-      truthfulnessNotes: ["Preserves the original CV content and applies formatting, ordering, and light cleanup only."]
-    },
-    {
-      mode: "Balanced" as const,
-      headline: job.title ? `${candidate.name ?? "Candidate"} - aligned for ${job.title}` : "Aligned CV optimization",
-      summary: `${originalSummary}${roleContext}`,
-      experienceBullets: reorderByRelevance(baseBullets, relevantTerms),
-      skillsToEmphasize: emphasizedSkills,
-      truthfulnessNotes: ["Keeps the candidate's original evidence and reorders emphasis toward the target role."]
-    },
-    {
-      mode: "Strategic" as const,
-      headline: job.title ? `${candidate.name ?? "Candidate"} - targeted CV for ${job.title}` : "Targeted CV optimization",
-      summary: `${originalSummary}${roleContext}`,
-      experienceBullets: reorderByRelevance(baseBullets, relevantTerms),
-      skillsToEmphasize: emphasizedSkills,
-      truthfulnessNotes: ["Strategic mode strengthens positioning while preserving the same underlying roles, projects, skills, and evidence."]
-    }
-  ];
-
-  return { scores, requirements, suggestions, topFixes, recruiterLens, hiringManagerConcerns, interviewDefense, doNotFabricate, optimized };
+  return { scores, requirements, suggestions, topFixes, recruiterLens, hiringManagerConcerns, interviewDefense, doNotFabricate, alternativeRoles, optimized: [] };
 }
 
 export async function analyzeAlignment(candidate: CandidateProfile, job: JobDescription): Promise<Analysis> {
   const fallback = heuristicAnalysis(candidate, job);
-  return llmClient.generateJson(
+  const prompt = buildStructuredPrompt({
+    persona: "You are a talent intelligence review board: an ATS matching architect, senior technical recruiter, hiring manager, career strategist, and truthfulness auditor.",
+    task: "Compare the candidate ATS profile against the job requisition and produce a structured, evidence-first hiring alignment analysis.",
+    context: `Candidate ATS profile:\n${JSON.stringify(candidate)}\n\nJob requisition:\n${JSON.stringify(job)}`,
+    instructions: [
+      "Build a requirement evidence matrix for important job requirements.",
+      "Classify each requirement as Critical, Important, or Nice to have.",
+      "Classify candidate evidence as Strong, Weak, Transferable, or Missing.",
+      "Identify top fixes, recruiter lens, hiring manager concerns, interview defense topics, do-not-fabricate items, and alternative roles the candidate could search for.",
+      "Use concrete CV evidence whenever possible."
+    ],
+    constraints: [
+      "Do not write or rewrite a CV.",
+      "Do not fabricate experience, certifications, skills, metrics, dates, employers, or credentials.",
+      "If evidence is related but not exact, mark it Transferable.",
+      "Return only valid JSON matching analysisSchema."
+    ],
+    outputFormat: "JSON matching analysisSchema: scores, requirements, suggestions, topFixes, recruiterLens, hiringManagerConcerns, interviewDefense, doNotFabricate, alternativeRoles, optimized.",
+    recap: "Evidence-first analysis only. The product is the audit, not CV generation."
+  });
+  const parsed = await llmClient.generateJson(
     [
-      { role: "system", content: "You are a truthful career alignment analyst. Do not write marketing copy. Do not fabricate achievements, skills, jobs, certifications, or metrics. The core output is structured analysis: requirement evidence matrix, recruiter lens, hiring manager concerns, interview defense, and do-not-fabricate warnings. Every score must explain why it was assigned." },
-      { role: "user", content: `Analyze this resume against this job and return JSON matching the schema: scores, requirements, suggestions, topFixes, recruiterLens, hiringManagerConcerns, interviewDefense, doNotFabricate, optimized. For each requirement, map requirement, category, importance, status, cvEvidence, gap, recommendedAction, bestCvLocation. Prefer concrete CV evidence over generic commentary.\nCandidate:\n${JSON.stringify(candidate)}\nJob:\n${JSON.stringify(job)}` }
+      { role: "system", content: "Follow the structured prompt exactly. Output JSON only." },
+      { role: "user", content: prompt }
     ],
     analysisSchema,
     fallback
   );
+  return {
+    ...parsed,
+    requirements: parsed.requirements.length ? parsed.requirements : fallback.requirements,
+    topFixes: parsed.topFixes.length ? parsed.topFixes : fallback.topFixes,
+    recruiterLens: parsed.recruiterLens.length ? parsed.recruiterLens : fallback.recruiterLens,
+    hiringManagerConcerns: parsed.hiringManagerConcerns.length ? parsed.hiringManagerConcerns : fallback.hiringManagerConcerns,
+    interviewDefense: parsed.interviewDefense.length ? parsed.interviewDefense : fallback.interviewDefense,
+    alternativeRoles: parsed.alternativeRoles.length ? parsed.alternativeRoles : fallback.alternativeRoles,
+    optimized: []
+  };
+}
+
+function suggestAlternativeRoles(candidate: CandidateProfile, matchedSkills: string[]): Analysis["alternativeRoles"] {
+  const experienceEvidence = candidate.experience.map((item) => `${item.title} at ${item.company}`);
+  const experienceText = candidate.experience
+    .map((item) => `${item.title} ${item.company} ${item.bullets.join(" ")}`)
+    .join(" ");
+  const text = `${candidate.skills.join(" ")} ${candidate.projects.join(" ")} ${experienceText}`.toLowerCase();
+  const roles: Analysis["alternativeRoles"] = [];
+  const add = (title: string, why: string, keywords: string[], evidence: string[]) => {
+    roles.push({ title, why, searchKeywords: keywords, evidence: evidence.slice(0, 4) });
+  };
+  if (/manager|team leader|leadership|mentor|stakeholder|ownership|team|global operations/.test(text)) {
+    add(
+      "Engineering Manager",
+      "The CV shows formal management, team leadership, operational ownership, or stakeholder-facing leadership evidence.",
+      ["Engineering Manager", "Software Engineering Manager", "Technical Engineering Manager"],
+      experienceEvidence
+    );
+  }
+  if (/support engineering|customer support|incident management|servicenow|operations|platform reliability|global operations/.test(text)) {
+    add(
+      "Support Engineering Manager",
+      "The CV combines support engineering leadership, incident management, platform operations, and customer-facing technical escalation signals.",
+      ["Support Engineering Manager", "Technical Support Manager", "Escalation Engineering Manager"],
+      experienceEvidence
+    );
+  }
+  if (/ai|llm|rag|semantic|automation|platform/.test(text) && /manager|team leader|leadership|global operations/.test(text)) {
+    add(
+      "AI Platform Engineering Manager",
+      "The CV combines leadership history with applied AI, RAG, semantic search, platform, or automation evidence.",
+      ["AI Platform Engineering Manager", "AI Engineering Manager", "Applied AI Engineering Manager"],
+      [...experienceEvidence, ...candidate.projects]
+    );
+  }
+  if (/llm|rag|embedding|semantic|ai|machine learning|python/.test(text)) {
+    add("AI Application Engineer", "The CV shows applied AI, RAG, semantic search, or Python project evidence.", ["AI Application Engineer", "RAG Engineer", "LLM Engineer"], candidate.projects);
+  }
+  if (/api|platform|aws|docker|kubernetes|cloud|systems/.test(text)) {
+    add("Platform Engineer", "The CV contains platform, API, cloud, or systems evidence.", ["Platform Engineer", "Backend Platform Engineer", "Cloud Platform Engineer"], [...matchedSkills, ...candidate.skills]);
+  }
+  if (/data|analytics|sql|dashboard|metadata|recommendation/.test(text)) {
+    add("Data / Analytics Engineer", "The CV shows SQL, analytics, metadata, recommendation, or dashboard signals.", ["Analytics Engineer", "Data Engineer", "BI Engineer"], candidate.projects);
+  }
+  if (/react|typescript|javascript|web|ui|frontend/.test(text)) {
+    add("Full Stack Engineer", "The CV has web/frontend plus backend or project delivery signals.", ["Full Stack Engineer", "Frontend Engineer", "Product Engineer"], candidate.skills);
+  }
+  return roles.slice(0, 5);
 }

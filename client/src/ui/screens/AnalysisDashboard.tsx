@@ -74,6 +74,26 @@ export function AnalysisDashboard() {
         <InsightPanel title="Interview defense" items={analysis.interviewDefense} tone="neutral" />
       </div>
 
+      {analysis.alternativeRoles.length > 0 && (
+        <Panel>
+          <h3 className="text-xl font-semibold">You could also search for</h3>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">These role families are inferred from the CV evidence and can be expanded later into career-path analysis.</p>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {analysis.alternativeRoles.map((role) => (
+              <div key={role.title} className="rounded-md border border-border bg-muted/30 p-4">
+                <div className="text-lg font-semibold">{role.title}</div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{role.why}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {role.searchKeywords.map((keyword) => (
+                    <span key={keyword} className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">{keyword}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
       {analysis.doNotFabricate.length > 0 && (
         <Panel className="border-red-200 bg-red-50/60 shadow-none">
           <h3 className="text-xl font-semibold text-red-950">Do not fabricate</h3>

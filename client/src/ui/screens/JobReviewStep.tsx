@@ -37,6 +37,7 @@ export function JobReviewStep() {
   const roleSignals = getRoleSignals(store.job);
   const priorities = getPriorities(store.job);
   const maxSkillWeight = Math.max(1, ...skillEmphasis.map((skill) => skill.weight));
+  const displayTitle = getDisplayTitle(store.job.title);
 
   return (
     <section className="mx-auto grid max-w-5xl gap-6 px-5 py-8">
@@ -63,7 +64,7 @@ export function JobReviewStep() {
             <BriefcaseBusiness className="h-4 w-4" />
             Role snapshot
           </div>
-          <h3 className="mt-3 text-2xl font-semibold">{store.job.title ?? "Target role"}</h3>
+          <h3 className="mt-3 text-2xl font-semibold">{displayTitle}</h3>
           <p className="mt-2 text-sm opacity-85">Seniority: {store.job.seniority ?? "Not specified"}</p>
         </div>
         <div className="grid gap-0 md:grid-cols-3">
@@ -130,6 +131,14 @@ export function JobReviewStep() {
       </Panel>
     </section>
   );
+}
+
+function getDisplayTitle(title?: string): string {
+  if (!title) return "Target role";
+  if (/^https?:\/\//i.test(title) || /gitlab\.com|github\.com|linkedin\.com/i.test(title) || title.length > 90) {
+    return "Target role";
+  }
+  return title;
 }
 
 function SnapshotMetric({ label, value, tone }: { label: string; value: number; tone: "red" | "amber" | "slate" }) {
@@ -212,8 +221,8 @@ function RequirementPanel({ title, items }: { title: string; items: string[] }) 
     <Panel className="shadow-none">
       <h3 className="text-lg font-semibold">{title}</h3>
       <div className="mt-4 grid gap-2">
-        {(items.length ? items : ["No explicit evidence found."]).map((item) => (
-          <div key={item} className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm leading-6 text-muted-foreground">
+        {(items.length ? items : ["No explicit evidence found."]).map((item, index) => (
+          <div key={`${item}-${index}`} className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm leading-6 text-muted-foreground">
             {item}
           </div>
         ))}
@@ -232,8 +241,8 @@ function PriorityPanel({ title, items, tone }: { title: string; items: string[];
     <Panel className="shadow-none">
       <h3 className="text-lg font-semibold">{title}</h3>
       <div className="mt-4 flex flex-wrap gap-2">
-        {(items.length ? items : ["No explicit evidence found."]).map((item) => (
-          <span key={item} className={`rounded-md border px-3 py-2 text-sm font-medium ${classes[tone]}`}>
+        {(items.length ? items : ["No explicit evidence found."]).map((item, index) => (
+          <span key={`${item}-${index}`} className={`rounded-md border px-3 py-2 text-sm font-medium ${classes[tone]}`}>
             {item}
           </span>
         ))}

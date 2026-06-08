@@ -14,6 +14,7 @@ export async function saveCandidate(profile: CandidateProfile): Promise<Candidat
       projectsJson: JSON.stringify(profile.projects),
       sectionsJson: JSON.stringify(profile.sections),
       parseAuditJson: JSON.stringify(profile.parseAudit),
+      candidateCardJson: JSON.stringify(profile.candidateCard),
       rawText: profile.rawText
     }
   });
